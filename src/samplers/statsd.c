@@ -258,6 +258,7 @@ void brubeck_statsd_packet_parse(struct brubeck_server *server, char *buffer, ch
 			logbuf = (char*)calloc((n - buffer + 1 + strlen("sampler=statsd event=zb_packet_drop")), sizeof(char));
 			strcat(logbuf, "sampler=statsd event=zb_packet_drop");
 			if (n != NULL) {
+			    printf("%d", n - buffer);
 			    strncat(logbuf, buffer, n - buffer);
 			}
 			gh_log_write(logbuf);
