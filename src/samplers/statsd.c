@@ -3,6 +3,7 @@
 #include <sys/uio.h>
 #include <sys/socket.h>
 #include "brubeck.h"
+#include "log.h"
 
 #ifdef __GLIBC__
 #	if ((__GLIBC__ > 2) || ((__GLIBC__ == 2) && (__GLIBC_MINOR__ >= 12)))
@@ -258,7 +259,7 @@ void brubeck_statsd_packet_parse(struct brubeck_server *server, char *buffer, ch
 			    logbuf = (char*)calloc((n - buffer + 1 + strlen("sampler=statsd event=zb_packet_drop")), sizeof(char));
 			    strcat(logbuf, "sampler=statsd event=zb_packet_drop");
 			    strncat(logbuf, buffer, n - buffer);
-			    log_splunk(logbuf);
+			    gh_log_write(logbuf);
 			    free(logbuf);
 			} else {
 			    log_splunk("sampler=statsd event=packet_drop");
