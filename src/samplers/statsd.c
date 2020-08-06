@@ -255,15 +255,13 @@ void brubeck_statsd_packet_parse(struct brubeck_server *server, char *buffer, ch
 		if (brubeck_statsd_msg_parse(&msg, buffer, stat_end) < 0) {
 			brubeck_stats_inc(server, errors);
 			char *n = strchr(buffer, '\n');
+			logbuf = (char*)calloc((n - buffer + 1 + strlen("sampler=statsd event=zb_packet_drop")), sizeof(char));
+			strcat(logbuf, "sampler=statsd event=zb_packet_drop");
 			if (n != NULL) {
-			    logbuf = (char*)calloc((n - buffer + 1 + strlen("sampler=statsd event=zb_packet_drop")), sizeof(char));
-			    strcat(logbuf, "sampler=statsd event=zb_packet_drop");
 			    strncat(logbuf, buffer, n - buffer);
-			    gh_log_write(logbuf);
-			    free(logbuf);
-			} else {
-			    log_splunk("sampler=statsd event=packet_drop");
 			}
+			gh_log_write(logbuf);
+			free(logbuf);
 
 		} else {
 			brubeck_stats_inc(server, metrics);
