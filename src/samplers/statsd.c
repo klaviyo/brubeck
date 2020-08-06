@@ -244,6 +244,7 @@ void brubeck_statsd_packet_parse(struct brubeck_server *server, char *buffer, ch
 {
 	struct brubeck_statsd_msg msg;
 	struct brubeck_metric *metric;
+	char* logbuf;
 
 	while (buffer < end) {
 		char *stat_end = memchr(buffer, '\n', end - buffer);
@@ -252,7 +253,17 @@ void brubeck_statsd_packet_parse(struct brubeck_server *server, char *buffer, ch
 
 		if (brubeck_statsd_msg_parse(&msg, buffer, stat_end) < 0) {
 			brubeck_stats_inc(server, errors);
-			log_splunk("sampler=statsd event=packet_drop");
+			char *n = strchr(buffer, '\n');
+			if (n != NULL) {
+			    logbuf = (char*)calloc((n - buffer + 1 + strlen("sampler=statsd event=zb_packet_drop")), sizeof(char));
+			    strcat(logbuf, "sampler=statsd event=zb_packet_drop");
+			    strncat(logbuf, buffer, n - buffer);
+			    log_splunk(logbuf);
+			    free(logbuf);
+			} else {
+			    log_splunk("sampler=statsd event=packet_drop");
+			}
+
 		} else {
 			brubeck_stats_inc(server, metrics);
 			metric = brubeck_metric_find(server, msg.key, msg.key_len, msg.type);
