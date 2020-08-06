@@ -252,7 +252,9 @@ void brubeck_statsd_packet_parse(struct brubeck_server *server, char *buffer, ch
 
 		if (brubeck_statsd_msg_parse(&msg, buffer, stat_end) < 0) {
 			brubeck_stats_inc(server, errors);
-			log_splunk("sampler=statsd event=packet_drop");
+			printf("%s", "[zb sadness] ");
+			fwrite(buffer, stat_end - buffer, 1, stdout);
+			printf("%s", "\n");
 		} else {
 			brubeck_stats_inc(server, metrics);
 			metric = brubeck_metric_find(server, msg.key, msg.key_len, msg.type);
