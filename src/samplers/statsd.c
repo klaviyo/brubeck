@@ -3,7 +3,6 @@
 #include <sys/uio.h>
 #include <sys/socket.h>
 #include "brubeck.h"
-#include "log.h"
 
 #ifdef __GLIBC__
 #	if ((__GLIBC__ > 2) || ((__GLIBC__ == 2) && (__GLIBC_MINOR__ >= 12)))
@@ -245,7 +244,6 @@ void brubeck_statsd_packet_parse(struct brubeck_server *server, char *buffer, ch
 {
 	struct brubeck_statsd_msg msg;
 	struct brubeck_metric *metric;
-	char* logbuf;
 
 	while (buffer < end) {
 		char *stat_end = memchr(buffer, '\n', end - buffer);
@@ -254,16 +252,9 @@ void brubeck_statsd_packet_parse(struct brubeck_server *server, char *buffer, ch
 
 		if (brubeck_statsd_msg_parse(&msg, buffer, stat_end) < 0) {
 			brubeck_stats_inc(server, errors);
-			char *n = strchr(buffer, '\n');
-			logbuf = (char*)calloc((n - buffer + 1 + strlen("sampler=statsd event=zb_packet_drop")), sizeof(char));
-			strcat(logbuf, "sampler=statsd event=zb_packet_drop");
-			if (n != NULL) {
-			    printf("%d", n - buffer);
-			    strncat(logbuf, buffer, n - buffer);
-			}
-			gh_log_write(logbuf);
-			free(logbuf);
-
+			printf("%s", "[zb sadness] ");
+			fwrite(buffer, stat_end - buffer, 1, stdout);
+			printf("%s", "\n");
 		} else {
 			brubeck_stats_inc(server, metrics);
 			metric = brubeck_metric_find(server, msg.key, msg.key_len, msg.type);
