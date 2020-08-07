@@ -70,27 +70,47 @@ void initproctitle (int argc, char **argv);
 int getproctitle(char **procbuffer);
 void setproctitle (const char *prog, const char *txt);
 
-static inline ssize_t xwrite(int fd, const void *buf, size_t len)
+static inline ssize_t xwrite(pollfd pfd, const void *buf, size_t len)
 {
 	ssize_t nr;
 	while (1) {
-		nr = write(fd, buf, len);
-		if ((nr < 0) && (errno == EAGAIN || errno == EINTR))
-			continue;
-		return nr;
+	    nr = poll({pfd}, 1, -1);
+	    if ((nr < 0) && (errno == EAGAIN || errno == EINTR))
+	        continue;
+	    break;
 	}
+	if (nr == 0) {
+	    errno = ETIMEDOUT;
+	    return -1;
+	}
+	// Assumes POLLERR/POLLHUP/POLLINVAL will never be set if POLLOUT is possible:
+    if (pfd.revents & POLLOUT) {
+        while (1) {
+            nr = write(pfd->fd, buf, len);
+            if ((nr < 0) && (errno == EAGAIN || errno == EINTR))
+                continue;
+            break;
+        }
+    }
+	return nr;
 }
+
+// TODO if we get 0 bytes written we have problemz.
+
 
 static inline ssize_t write_in_full(int fd, const void *buf, size_t count)
 {
 	const char *p = buf;
+	struct pollfd pfd = {0};
+	pfd.fd = fd;
+	pfd.events = POLLOUT;
 	ssize_t total = 0;
 
 	while (count > 0) {
-		ssize_t written = xwrite(fd, p, count);
+		ssize_t written = xwrite(pfd, p, count);
 		if (written < 0)
 			return -1;
-		if (!written) {
+		if (written == 0) {
 			errno = ENOSPC;
 			return -1;
 		}
