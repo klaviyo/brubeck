@@ -83,7 +83,6 @@ static inline ssize_t xwrite(pollfd pfd, const void *buf, size_t len)
 	    errno = ETIMEDOUT;
 	    return -1;
 	}
-	// Assumes POLLERR/POLLHUP/POLLINVAL will never be set if POLLOUT is possible:
     if (pfd.revents & POLLOUT) {
         while (1) {
             nr = write(pfd->fd, buf, len);
@@ -91,6 +90,9 @@ static inline ssize_t xwrite(pollfd pfd, const void *buf, size_t len)
                 continue;
             break;
         }
+    } else {
+        // POLLERR/POLLHUP/POLLINVAL will never be set if POLLOUT is possible
+        die("Poll failure")
     }
 	return nr;
 }
@@ -104,16 +106,12 @@ static inline ssize_t write_in_full(int fd, const void *buf, size_t count)
 	struct pollfd pfd = {0};
 	pfd.fd = fd;
 	pfd.events = POLLOUT;
-	ssize_t total = 0;
+	ssize_t total, bp_writes = 0;
 
 	while (count > 0) {
 		ssize_t written = xwrite(pfd, p, count);
-		if (written < 0)
+		if (written <= 0)
 			return -1;
-		if (written == 0) {
-			errno = ENOSPC;
-			return -1;
-		}
 		count -= written;
 		p += written;
 		total += written;
