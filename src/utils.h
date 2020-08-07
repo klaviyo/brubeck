@@ -1,6 +1,6 @@
 #ifndef __BRUBECK_H__
 #define __BRUBECK_H__
-
+#include <poll.h>
 #define likely(x)       __builtin_expect((x),1)
 #define unlikely(x)     __builtin_expect((x),0)
 #define ct_assert(e) ((void)sizeof(char[1 - 2*!(e)]))
@@ -70,11 +70,11 @@ void initproctitle (int argc, char **argv);
 int getproctitle(char **procbuffer);
 void setproctitle (const char *prog, const char *txt);
 
-static inline ssize_t xwrite(pollfd pfd, const void *buf, size_t len)
+static inline ssize_t xwrite(struct pollfd *pfd, const void *buf, size_t len)
 {
 	ssize_t nr;
 	while (1) {
-	    nr = poll({pfd}, 1, -1);
+	    nr = poll(pfd, 1, -1);
 	    if ((nr < 0) && (errno == EAGAIN || errno == EINTR))
 	        continue;
 	    break;
@@ -83,7 +83,7 @@ static inline ssize_t xwrite(pollfd pfd, const void *buf, size_t len)
 	    errno = ETIMEDOUT;
 	    return -1;
 	}
-    if (pfd.revents & POLLOUT) {
+    if (pfd->revents & POLLOUT) {
         while (1) {
             nr = write(pfd->fd, buf, len);
             if ((nr < 0) && (errno == EAGAIN || errno == EINTR))
@@ -92,7 +92,7 @@ static inline ssize_t xwrite(pollfd pfd, const void *buf, size_t len)
         }
     } else {
         // POLLERR/POLLHUP/POLLINVAL will never be set if POLLOUT is possible
-        die("Poll failure")
+        die("Poll failure");
     }
 	return nr;
 }
@@ -106,10 +106,10 @@ static inline ssize_t write_in_full(int fd, const void *buf, size_t count)
 	struct pollfd pfd = {0};
 	pfd.fd = fd;
 	pfd.events = POLLOUT;
-	ssize_t total, bp_writes = 0;
+	ssize_t total = 0;
 
 	while (count > 0) {
-		ssize_t written = xwrite(pfd, p, count);
+		ssize_t written = xwrite(&pfd, p, count);
 		if (written <= 0)
 			return -1;
 		count -= written;
