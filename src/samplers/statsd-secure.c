@@ -3,6 +3,25 @@
 #include <openssl/hmac.h>
 #include "brubeck.h"
 
+/* OpenSSL < 1.1.0 (bionic bakes pin libssl1.0-dev) has no heap HMAC_CTX API */
+#if OPENSSL_VERSION_NUMBER < 0x10100000L
+static HMAC_CTX *HMAC_CTX_new(void)
+{
+	HMAC_CTX *ctx = malloc(sizeof(*ctx));
+	if (ctx)
+		HMAC_CTX_init(ctx);
+	return ctx;
+}
+
+static void HMAC_CTX_free(HMAC_CTX *ctx)
+{
+	if (ctx) {
+		HMAC_CTX_cleanup(ctx);
+		free(ctx);
+	}
+}
+#endif
+
 #define SHA_SIZE 32
 #define SHA_FUNCTION EVP_sha256
 
@@ -98,7 +117,7 @@ static void *statsd_secure__thread(void *_in)
 
 	char buffer[MAX_PACKET_SIZE];
 
-	HMAC_CTX ctx;
+	HMAC_CTX *ctx;
 	unsigned char hmac_buffer[SHA_SIZE];
 	unsigned int hmac_len;
 
@@ -108,8 +127,8 @@ static void *statsd_secure__thread(void *_in)
 
 	log_splunk("sampler=statsd-secure event=worker_online");
 
-	HMAC_CTX_init(&ctx);
-	HMAC_Init_ex(&ctx, statsd->hmac_key, strlen(statsd->hmac_key), SHA_FUNCTION(), NULL);
+	ctx = HMAC_CTX_new();
+	HMAC_Init_ex(ctx, statsd->hmac_key, strlen(statsd->hmac_key), SHA_FUNCTION(), NULL);
 
 	for (;;) {
 		int res = recvfrom(statsd->sampler.in_sock, buffer,
@@ -133,9 +152,9 @@ static void *statsd_secure__thread(void *_in)
 			continue;
 		}
 
-		HMAC_Init_ex(&ctx, NULL, 0, NULL, NULL);
-		HMAC_Update(&ctx, (unsigned char *)buffer + SHA_SIZE, res - SHA_SIZE);
-		HMAC_Final(&ctx, hmac_buffer, &hmac_len);
+		HMAC_Init_ex(ctx, NULL, 0, NULL, NULL);
+		HMAC_Update(ctx, (unsigned char *)buffer + SHA_SIZE, res - SHA_SIZE);
+		HMAC_Final(ctx, hmac_buffer, &hmac_len);
 
 		if (memcmpct(buffer, hmac_buffer, SHA_SIZE) != 0) {
 			log_splunk("sampler=statsd-secure event=fail_auth hmac=%s", hmactos(buffer));
@@ -149,7 +168,7 @@ static void *statsd_secure__thread(void *_in)
 		brubeck_statsd_packet_parse(server, buffer + MIN_PACKET_SIZE, buffer + res);
 	}
 
-	HMAC_CTX_cleanup(&ctx);
+	HMAC_CTX_free(ctx);
 	return NULL;
 }
 
