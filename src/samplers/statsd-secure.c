@@ -3,6 +3,25 @@
 #include <openssl/hmac.h>
 #include "brubeck.h"
 
+/* OpenSSL < 1.1.0 (bionic bakes pin libssl1.0-dev) has no heap HMAC_CTX API */
+#if OPENSSL_VERSION_NUMBER < 0x10100000L
+static HMAC_CTX *HMAC_CTX_new(void)
+{
+	HMAC_CTX *ctx = malloc(sizeof(*ctx));
+	if (ctx)
+		HMAC_CTX_init(ctx);
+	return ctx;
+}
+
+static void HMAC_CTX_free(HMAC_CTX *ctx)
+{
+	if (ctx) {
+		HMAC_CTX_cleanup(ctx);
+		free(ctx);
+	}
+}
+#endif
+
 #define SHA_SIZE 32
 #define SHA_FUNCTION EVP_sha256
 
