@@ -2,6 +2,39 @@
 
 #define INTERNAL_LONGEST_KEY ".secure.from_future"
 
+/*
+ * Mirror the per-flush internal stats to a local statsd_exporter as StatsD
+ * lines. Counters are sent as |c increments so the exporter accumulates them
+ * into monotonic Prometheus counters (rate() friendly); unique_keys is a gauge.
+ * Best effort: UDP, non-blocking, errors ignored. Disabled unless the config
+ * has a "self_statsd" block.
+ */
+static void
+internal__emit_statsd(struct brubeck_internal_stats *stats)
+{
+	char buf[768];
+	int n;
+
+	if (stats->self_fd < 0)
+		return;
+
+	n = snprintf(buf, sizeof(buf),
+		"%s.metrics:%u|c\n%s.errors:%u|c\n%s.unique_keys:%u|g\n"
+		"%s.secure.failed:%u|c\n%s.secure.from_future:%u|c\n"
+		"%s.secure.delayed:%u|c\n%s.secure.replayed:%u|c\n",
+		stats->self_prefix, stats->sample.metrics,
+		stats->self_prefix, stats->sample.errors,
+		stats->self_prefix, stats->sample.unique_keys,
+		stats->self_prefix, stats->sample.secure.failed,
+		stats->self_prefix, stats->sample.secure.from_future,
+		stats->self_prefix, stats->sample.secure.delayed,
+		stats->self_prefix, stats->sample.secure.replayed);
+
+	if (n > 0 && n < (int)sizeof(buf))
+		sendto(stats->self_fd, buf, n, MSG_DONTWAIT,
+			(struct sockaddr *)&stats->self_addr, sizeof(stats->self_addr));
+}
+
 void
 brubeck_internal__sample(struct brubeck_metric *metric, brubeck_sample_cb sample, void *opaque)
 {
@@ -54,6 +87,8 @@ brubeck_internal__sample(struct brubeck_metric *metric, brubeck_sample_cb sample
 		sample(metric->type, key, (value_t)value, opaque);
 	}
 
+	internal__emit_statsd(stats);
+
 	/*
 	 * Mark the metric as active so it doesn't get disabled
 	 * by the inactive metrics pruner
@@ -74,6 +109,29 @@ void brubeck_internal__init(struct brubeck_server *server)
 		die("Failed to initialize internal stats sampler");
 
 	internal->as.other = &server->internal_stats;
+
+	/* Optional: "self_statsd": {"address": "127.0.0.1", "port": 9125, "prefix": "brubeck_self"} */
+	server->internal_stats.self_fd = -1;
+	{
+		json_t *ss = json_object_get(server->config, "self_statsd");
+		if (ss && json_is_object(ss)) {
+			const char *addr = "127.0.0.1";
+			const char *prefix = "brubeck_self";
+			int port = 9125;
+
+			json_unpack(ss, "{s?:s, s?:i, s?:s}",
+				"address", &addr, "port", &port, "prefix", &prefix);
+
+			int fd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+			if (fd >= 0) {
+				url_to_inaddr2(&server->internal_stats.self_addr, addr, port);
+				server->internal_stats.self_prefix = strdup(prefix);
+				server->internal_stats.self_fd = fd;
+				log_splunk("sampler=internal event=self_statsd addr=%s:%d prefix=%s",
+					addr, port, prefix);
+			}
+		}
+	}
 
 	backend = brubeck_metric_shard(server, internal);
 	server->internal_stats.sample_freq = backend->sample_freq;

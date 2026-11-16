@@ -3,6 +3,12 @@
 
 struct brubeck_internal_stats {
 	int sample_freq;
+
+	/* optional: mirror internal stats to a local statsd_exporter */
+	int self_fd;
+	struct sockaddr_in self_addr;
+	const char *self_prefix;
+
 	struct {
 		uint32_t metrics;
 		uint32_t errors;
